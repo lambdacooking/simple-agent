@@ -200,3 +200,22 @@ def test_config_treats_empty_env_as_default(monkeypatch):
     assert (cfg.model, cfg.effort, cfg.mail_from) == ("claude-opus-5-5", "low", "a@test")
     assert cfg.organize_folder is None
     assert cfg.sender_keywords == ("github", "홍길동")
+
+
+def test_config_defaults_to_naver_and_completes_sender(monkeypatch):
+    for k in ("IMAP_HOST", "SMTP_HOST", "MAIL_FROM"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in dict(IMAP_USER="myid", IMAP_PASSWORD="x", SMTP_USER="myid", SMTP_PASSWORD="x",
+                     DIGEST_TO="b@test", SENDER_KEYWORDS="github").items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr("mail_agent.config.load_dotenv", lambda: None)
+
+    cfg = Config.from_env()
+    assert (cfg.imap_host, cfg.smtp_host) == ("imap.naver.com", "smtp.naver.com")
+    assert cfg.mail_from == "myid@naver.com"
+
+    # 전체 주소를 넣었거나 MAIL_FROM 을 지정하면 그대로 사용
+    monkeypatch.setenv("SMTP_USER", "me@naver.com")
+    assert Config.from_env().mail_from == "me@naver.com"
+    monkeypatch.setenv("MAIL_FROM", "alias@naver.com")
+    assert Config.from_env().mail_from == "alias@naver.com"

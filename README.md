@@ -34,14 +34,28 @@ cp .env.example .env   # 값 채우기
 | `SMTP_*`, `MAIL_FROM` | 요약 메일을 보낼 계정 (보통 A 계정 그대로) |
 | `DIGEST_TO` | B 메일 주소 (요약 받는 곳) |
 | `SENDER_KEYWORDS` | 송신자 이름/주소에 포함되면 대상. 쉼표 구분, 대소문자 무시 (예: `github.com,홍길동,@mycompany.co.kr`) |
-| `ORGANIZE_FOLDER` | (선택) 대상 메일을 복사해 둘 폴더. Gmail에서는 라벨로 보임 |
+| `ORGANIZE_FOLDER` | (선택) 대상 메일을 복사해 둘 메일 폴더 (Gmail에서는 라벨로 보임) |
 | `CHECK_INTERVAL_MINUTES` | 확인 주기, 기본 10 |
 | `ANTHROPIC_MODEL`, `CLAUDE_EFFORT` | 기본 `claude-opus-5-5`, `low` |
 
-**Gmail을 쓰는 경우:** 일반 비밀번호로는 로그인되지 않습니다.
-Google 계정 → 보안 → 2단계 인증 켜기 → **앱 비밀번호** 생성 후 `IMAP_PASSWORD`/`SMTP_PASSWORD`에 넣으세요.
-(Gmail 설정 → 전달 및 POP/IMAP 에서 IMAP 사용도 켜져 있어야 합니다.)
-네이버 메일도 환경설정에서 IMAP/SMTP를 켜면 `imap.naver.com` / `smtp.naver.com`(465)으로 똑같이 동작합니다.
+### A 계정(네이버) 준비
+
+기본 설정은 **네이버 메일** 기준입니다 (`imap.naver.com:993`, `smtp.naver.com:465`).
+
+1. 네이버 메일 → **환경설정 → POP3/IMAP 설정 → IMAP/SMTP 설정** 탭 → `IMAP/SMTP 사용`을 **사용함**으로 저장
+2. 네이버 계정에 **2단계 인증**을 쓰고 있다면: 네이버 내정보 → 보안설정 → 2단계 인증 → **애플리케이션 비밀번호** 생성 후 그 값을 비밀번호로 사용
+3. ⚠️ **GitHub Actions 로 돌린다면 `해외 로그인 차단`을 꺼야 합니다.** Actions 서버는 해외(주로 미국)에 있어서 차단이 켜져 있으면 로그인이 항상 실패합니다.
+   차단을 유지하고 싶다면 국내에 있는 PC/서버에서 직접 실행하세요.
+4. `IMAP_USER` / `SMTP_USER` 에는 **아이디만** (`myid`) 넣습니다. 보내는 사람 주소(`MAIL_FROM`)는 비워두면 `myid@naver.com` 으로 자동 완성됩니다.
+
+B 계정은 요약을 받기만 하므로 설정이 필요 없습니다. 첫 요약 메일이 스팸함에 들어가면 "스팸 아님"으로 표시해 주세요.
+
+<details><summary>다른 메일 서비스를 A 로 쓰는 경우 (Gmail 등)</summary>
+
+`IMAP_HOST` / `SMTP_HOST` 를 해당 서비스 주소로 바꾸면 됩니다.
+Gmail 은 `imap.gmail.com` / `smtp.gmail.com`, 2단계 인증 후 **앱 비밀번호**를 만들어 사용하고,
+`IMAP_USER` / `SMTP_USER` 에 전체 주소(`a@gmail.com`)를 넣습니다.
+</details>
 
 ## GitHub Actions 로 실행 (서버 없이)
 
@@ -53,23 +67,26 @@ Google 계정 → 보안 → 2단계 인증 켜기 → **앱 비밀번호** 생�
 | 이름 | 예시 |
 |---|---|
 | `ANTHROPIC_API_KEY` | `sk-ant-...` |
-| `IMAP_USER` / `IMAP_PASSWORD` | A 계정 / 앱 비밀번호 |
-| `SMTP_USER` / `SMTP_PASSWORD` | 보통 A 계정과 동일 |
+| `IMAP_USER` / `IMAP_PASSWORD` | 네이버 아이디(`myid`) / 비밀번호 또는 애플리케이션 비밀번호 |
+| `SMTP_USER` / `SMTP_PASSWORD` | 위와 동일 |
 | `DIGEST_TO` | B 메일 주소 |
 | `SENDER_KEYWORDS` | `github.com,홍길동` |
-| `MAIL_FROM`, `ORGANIZE_FOLDER` | (선택) |
+| `MAIL_FROM`, `ORGANIZE_FOLDER` | (선택) `MAIL_FROM` 은 비우면 `아이디@naver.com` |
 
 **Variables** (선택, 공개 로그에 보임 – 민감하지 않은 값만)
 
 | 이름 | 기본값 |
 |---|---|
-| `IMAP_HOST` / `SMTP_HOST` | `imap.gmail.com` / `smtp.gmail.com` |
+| `IMAP_HOST` / `SMTP_HOST` | `imap.naver.com` / `smtp.naver.com` |
 | `IMAP_PORT` / `SMTP_PORT` | `993` / `465` |
 | `IMAP_MAILBOX` | `INBOX` |
 | `ANTHROPIC_MODEL` / `CLAUDE_EFFORT` | `claude-opus-5-5` / `low` |
 
+A 가 네이버면 Variables 는 하나도 등록하지 않아도 됩니다.
+
 등록 후 **Actions → mail-agent → Run workflow** 로 한 번 수동 실행해서 확인하세요
 (첫 실행은 기준점만 저장하고 메일은 보내지 않습니다. 그 뒤 새 메일이 오면 다음 실행에서 요약이 옵니다).
+로그인에 실패하면 로그에 확인할 항목(IMAP 사용 설정 / 애플리케이션 비밀번호 / 해외 로그인 차단)이 함께 출력됩니다.
 
 알아둘 점:
 - **처리 위치(`state.json`)는 Actions 캐시에 저장됩니다.** UID 숫자만 들어 있어 메일 내용은 남지 않습니다.

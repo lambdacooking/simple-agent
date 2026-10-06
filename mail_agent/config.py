@@ -11,6 +11,17 @@ def _get(name: str, default: str) -> str:
     return os.getenv(name, "").strip() or default
 
 
+def _sender_address(smtp_user: str, smtp_host: str) -> str:
+    """SMTP 계정이 아이디만 있으면(네이버 등) 보내는 사람 주소를 완성한다.
+
+    예: ("myid", "smtp.naver.com") -> "myid@naver.com"
+    """
+    if "@" in smtp_user:
+        return smtp_user
+    domain = smtp_host.removeprefix("smtp.")
+    return f"{smtp_user}@{domain}"
+
+
 def _required(name: str) -> str:
     value = _get(name, "")
     if not value:
@@ -57,20 +68,21 @@ class Config:
             raise RuntimeError("SENDER_KEYWORDS 에 키워드를 하나 이상 입력하세요")
 
         smtp_user = _required("SMTP_USER")
+        smtp_host = _get("SMTP_HOST", "smtp.naver.com")
         return cls(
             model=_get("ANTHROPIC_MODEL", "claude-opus-5-5"),
             effort=_get("CLAUDE_EFFORT", "low"),
-            imap_host=_required("IMAP_HOST"),
+            imap_host=_get("IMAP_HOST", "imap.naver.com"),
             imap_port=int(_get("IMAP_PORT", "993")),
             imap_user=_required("IMAP_USER"),
             imap_password=_required("IMAP_PASSWORD"),
             imap_mailbox=_get("IMAP_MAILBOX", "INBOX"),
             organize_folder=_get("ORGANIZE_FOLDER", "") or None,
-            smtp_host=_required("SMTP_HOST"),
+            smtp_host=smtp_host,
             smtp_port=int(_get("SMTP_PORT", "465")),
             smtp_user=smtp_user,
             smtp_password=_required("SMTP_PASSWORD"),
-            mail_from=_get("MAIL_FROM", smtp_user),
+            mail_from=_get("MAIL_FROM", _sender_address(smtp_user, smtp_host)),
             digest_to=_required("DIGEST_TO"),
             sender_keywords=keywords,
             interval_minutes=int(_get("CHECK_INTERVAL_MINUTES", "10")),

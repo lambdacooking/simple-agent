@@ -107,7 +107,15 @@ class Mailbox:
 
     def __enter__(self) -> "Mailbox":
         self.imap = imaplib.IMAP4_SSL(self.cfg.imap_host, self.cfg.imap_port)
-        self.imap.login(self.cfg.imap_user, self.cfg.imap_password)
+        try:
+            self.imap.login(self.cfg.imap_user, self.cfg.imap_password)
+        except imaplib.IMAP4.error as e:
+            raise RuntimeError(
+                f"{self.cfg.imap_host} IMAP 로그인 실패 ({e}). 확인할 것: "
+                "① 메일 환경설정에서 IMAP/SMTP 사용함 "
+                "② 2단계 인증 사용 시 애플리케이션 비밀번호 사용 "
+                "③ 네이버 '해외 로그인 차단' 해제 (GitHub Actions 서버는 해외에 있음)"
+            ) from e
         # readonly 로 열지 않는 이유: 정리 폴더로 COPY 하려면 쓰기 모드가 필요.
         # 대신 본문은 BODY.PEEK 로 읽어서 '읽음' 표시가 붙지 않게 한다.
         typ, _ = self.imap.select(encode_mailbox(self.cfg.imap_mailbox))

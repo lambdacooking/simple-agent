@@ -51,10 +51,10 @@ jobs:
           DIGEST_TO: ${{ secrets.DIGEST_TO }}
           SENDER_KEYWORDS: ${{ secrets.SENDER_KEYWORDS }}
           ORGANIZE_FOLDER: ${{ secrets.ORGANIZE_FOLDER }}
-          IMAP_HOST: ${{ vars.IMAP_HOST || 'imap.gmail.com' }}
+          IMAP_HOST: ${{ vars.IMAP_HOST }}
           IMAP_PORT: ${{ vars.IMAP_PORT }}
           IMAP_MAILBOX: ${{ vars.IMAP_MAILBOX }}
-          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
           SMTP_PORT: ${{ vars.SMTP_PORT }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
           CLAUDE_EFFORT: ${{ vars.CLAUDE_EFFORT }}
