@@ -52,7 +52,7 @@ def main() -> None:
         max_instances=1,  # 이전 실행이 안 끝났으면 겹쳐 실행하지 않음
         coalesce=True,
     )
-    log.info("%d분마다 %s 메일함을 확인합니다 (Ctrl+C 로 종료)", cfg.interval_minutes, cfg.imap_user)
+    log.info("%d분마다 메일함을 확인합니다 (Ctrl+C 로 종료)", cfg.interval_minutes)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

@@ -6,8 +6,13 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 
+def _get(name: str, default: str) -> str:
+    # GitHub Actions 에서 등록하지 않은 변수는 빈 문자열로 들어오므로 기본값으로 취급한다.
+    return os.getenv(name, "").strip() or default
+
+
 def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
+    value = _get(name, "")
     if not value:
         raise RuntimeError(f"환경 변수 {name} 가 설정되지 않았습니다 (.env.example 참고)")
     return value
@@ -53,21 +58,21 @@ class Config:
 
         smtp_user = _required("SMTP_USER")
         return cls(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5"),
-            effort=os.getenv("CLAUDE_EFFORT", "low"),
+            model=_get("ANTHROPIC_MODEL", "claude-opus-5-5"),
+            effort=_get("CLAUDE_EFFORT", "low"),
             imap_host=_required("IMAP_HOST"),
-            imap_port=int(os.getenv("IMAP_PORT", "993")),
+            imap_port=int(_get("IMAP_PORT", "993")),
             imap_user=_required("IMAP_USER"),
             imap_password=_required("IMAP_PASSWORD"),
-            imap_mailbox=os.getenv("IMAP_MAILBOX", "INBOX"),
-            organize_folder=os.getenv("ORGANIZE_FOLDER", "").strip() or None,
+            imap_mailbox=_get("IMAP_MAILBOX", "INBOX"),
+            organize_folder=_get("ORGANIZE_FOLDER", "") or None,
             smtp_host=_required("SMTP_HOST"),
-            smtp_port=int(os.getenv("SMTP_PORT", "465")),
+            smtp_port=int(_get("SMTP_PORT", "465")),
             smtp_user=smtp_user,
             smtp_password=_required("SMTP_PASSWORD"),
-            mail_from=os.getenv("MAIL_FROM", smtp_user),
+            mail_from=_get("MAIL_FROM", smtp_user),
             digest_to=_required("DIGEST_TO"),
             sender_keywords=keywords,
-            interval_minutes=int(os.getenv("CHECK_INTERVAL_MINUTES", "10")),
-            state_file=os.getenv("STATE_FILE", "state.json"),
+            interval_minutes=int(_get("CHECK_INTERVAL_MINUTES", "10")),
+            state_file=_get("STATE_FILE", "state.json"),
         )

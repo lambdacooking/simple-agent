@@ -181,3 +181,22 @@ def test_failed_summary_still_included(tmp_path, env):
     FakeMailbox.mails = {1: raw_mail("noreply@github.com", "중요")}
     assert agent.run_once(cfg, NoneSummarizer()) == 1
     assert "자동 요약 실패" in env[0][1]
+
+
+def test_config_treats_empty_env_as_default(monkeypatch):
+    # GitHub Actions 에서 등록하지 않은 vars/secrets 는 빈 문자열로 들어온다
+    required = dict(IMAP_HOST="imap.test", IMAP_USER="a@test", IMAP_PASSWORD="x",
+                    SMTP_HOST="smtp.test", SMTP_USER="a@test", SMTP_PASSWORD="x",
+                    DIGEST_TO="b@test", SENDER_KEYWORDS=" GitHub , 홍길동 ,")
+    for k, v in required.items():
+        monkeypatch.setenv(k, v)
+    for k in ("IMAP_PORT", "SMTP_PORT", "IMAP_MAILBOX", "ANTHROPIC_MODEL", "CLAUDE_EFFORT",
+              "MAIL_FROM", "ORGANIZE_FOLDER"):
+        monkeypatch.setenv(k, "")
+    monkeypatch.setattr("mail_agent.config.load_dotenv", lambda: None)
+
+    cfg = Config.from_env()
+    assert (cfg.imap_port, cfg.smtp_port, cfg.imap_mailbox) == (993, 465, "INBOX")
+    assert (cfg.model, cfg.effort, cfg.mail_from) == ("claude-opus-5-5", "low", "a@test")
+    assert cfg.organize_folder is None
+    assert cfg.sender_keywords == ("github", "홍길동")

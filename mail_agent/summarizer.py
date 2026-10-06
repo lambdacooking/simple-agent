@@ -69,7 +69,8 @@ class Summarizer:
             fallbacks="default",
         )
         if response.stop_reason == "refusal":
-            log.warning("UID %s 요약이 거절되었습니다: %s", mail.uid, response.stop_details)
+            log.warning("UID %s 요약이 거절되었습니다 (category=%s)", mail.uid,
+                        getattr(response.stop_details, "category", None))
             return None
         if response.stop_reason == "max_tokens" or response.parsed_output is None:
             log.warning("UID %s 요약 결과를 파싱하지 못했습니다 (stop_reason=%s)",

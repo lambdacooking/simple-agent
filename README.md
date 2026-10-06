@@ -43,7 +43,44 @@ Google 계정 → 보안 → 2단계 인증 켜기 → **앱 비밀번호** 생�
 (Gmail 설정 → 전달 및 POP/IMAP 에서 IMAP 사용도 켜져 있어야 합니다.)
 네이버 메일도 환경설정에서 IMAP/SMTP를 켜면 `imap.naver.com` / `smtp.naver.com`(465)으로 똑같이 동작합니다.
 
-## 실행
+## GitHub Actions 로 실행 (서버 없이)
+
+`.github/workflows/mail-agent.yml` 이 10분마다 `python -m mail_agent --once` 를 실행합니다.
+저장소 **Settings → Secrets and variables → Actions** 에서 아래 값을 등록하면 바로 동작합니다.
+
+**Secrets** (값이 로그에 가려짐 – 개인정보는 전부 여기에)
+
+| 이름 | 예시 |
+|---|---|
+| `ANTHROPIC_API_KEY` | `sk-ant-...` |
+| `IMAP_USER` / `IMAP_PASSWORD` | A 계정 / 앱 비밀번호 |
+| `SMTP_USER` / `SMTP_PASSWORD` | 보통 A 계정과 동일 |
+| `DIGEST_TO` | B 메일 주소 |
+| `SENDER_KEYWORDS` | `github.com,홍길동` |
+| `MAIL_FROM`, `ORGANIZE_FOLDER` | (선택) |
+
+**Variables** (선택, 공개 로그에 보임 – 민감하지 않은 값만)
+
+| 이름 | 기본값 |
+|---|---|
+| `IMAP_HOST` / `SMTP_HOST` | `imap.gmail.com` / `smtp.gmail.com` |
+| `IMAP_PORT` / `SMTP_PORT` | `993` / `465` |
+| `IMAP_MAILBOX` | `INBOX` |
+| `ANTHROPIC_MODEL` / `CLAUDE_EFFORT` | `claude-opus-5-5` / `low` |
+
+등록 후 **Actions → mail-agent → Run workflow** 로 한 번 수동 실행해서 확인하세요
+(첫 실행은 기준점만 저장하고 메일은 보내지 않습니다. 그 뒤 새 메일이 오면 다음 실행에서 요약이 옵니다).
+
+알아둘 점:
+- **처리 위치(`state.json`)는 Actions 캐시에 저장됩니다.** UID 숫자만 들어 있어 메일 내용은 남지 않습니다.
+  7일 넘게 실행이 멈춰 캐시가 지워지면 다시 기준점부터 시작합니다 (그 사이 메일은 요약되지 않음).
+- **공개 저장소라 실행 로그를 누구나 볼 수 있습니다.** 그래서 로그에는 UID·건수만 남기고 제목·주소·본문은 남기지 않습니다.
+  디버그용 `-v` 옵션은 Actions 에서 켜지 마세요.
+- GitHub 의 예약 실행은 부하에 따라 **몇 분씩 늦어지거나 가끔 건너뛰어질 수 있습니다.** 정확히 10분이 필요하면 직접 서버에서 돌리세요.
+- 공개 저장소에서 **60일간 커밋 등 활동이 없으면 예약 실행이 자동으로 꺼집니다.** GitHub 에서 알림 메일이 오면 Actions 탭에서 다시 켜면 됩니다.
+- 공개 저장소의 표준 러너는 Actions 사용 시간이 무료입니다. (비공개로 바꾸면 월 무료 시간 2,000분을 넘기게 되므로 주기를 늘리세요.)
+
+## 직접 실행
 
 ```bash
 python -m mail_agent          # 10분마다 반복 실행 (시작 직후 1회 실행)

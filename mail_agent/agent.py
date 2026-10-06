@@ -14,6 +14,8 @@ from .filters import is_obvious_ad, matches_sender
 from .mail_client import Mail, Mailbox, send_mail
 from .summarizer import MailAnalysis, Summarizer
 
+# GitHub Actions(공개 저장소)의 로그는 누구나 볼 수 있으므로 INFO 이상 로그에는
+# 메일 제목·주소·본문을 남기지 않는다. 필요하면 -v 로 켠 DEBUG 로그에서만 확인.
 log = logging.getLogger(__name__)
 
 # 오랫동안 꺼져 있다 켜졌을 때 한 번에 너무 많은 메일을 요약하지 않도록 제한.
@@ -116,27 +118,28 @@ def run_once(cfg: Config, summarizer: Summarizer) -> int:
             if mail is None:
                 continue
             keyword = matches_sender(mail, cfg.sender_keywords)
+            log.debug("UID %s: %s / %s", uid, mail.sender_addr, mail.subject)
             if keyword is None:
-                log.debug("UID %s 건너뜀 (키워드 불일치): %s", uid, mail.sender_addr)
+                log.debug("UID %s 건너뜀 (키워드 불일치)", uid)
                 continue
             if is_obvious_ad(mail):
-                log.info("UID %s 광고 제외 (제목 표시): %s", uid, mail.subject)
+                log.info("UID %s 광고 제외 (제목 표시)", uid)
                 continue
 
             try:
                 analysis = summarizer.analyze(mail)
             except ValidationError as e:
-                log.warning("UID %s 요약 결과 형식 오류: %s", uid, e)
+                log.warning("UID %s 요약 결과 형식 오류 (%d개 필드)", uid, e.error_count())
                 analysis = None
             if analysis is not None and analysis.is_advertisement:
-                log.info("UID %s 광고 제외 (Claude 판단): %s", uid, mail.subject)
+                log.info("UID %s 광고 제외 (Claude 판단)", uid)
                 continue
             items.append(DigestItem(mail, keyword, analysis))
 
         if items:
             subject, text, html = build_digest(items)
             send_mail(cfg, subject, text, html)
-            log.info("요약 %d건을 %s 로 보냈습니다", len(items), cfg.digest_to)
+            log.info("요약 %d건 발송 완료", len(items))
             if cfg.organize_folder:
                 mb.copy_to_folder([it.mail.uid for it in items], cfg.organize_folder)
 
