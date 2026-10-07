@@ -31,9 +31,9 @@ def _required(name: str) -> str:
 
 @dataclass(frozen=True)
 class Config:
-    # Claude
+    # Grok (xAI)
+    xai_api_key: str
     model: str
-    effort: str
 
     # A 메일 (IMAP)
     imap_host: str
@@ -72,8 +72,8 @@ class Config:
         smtp_user = _required("SMTP_USER")
         smtp_host = _get("SMTP_HOST", "smtp.naver.com")
         return cls(
-            model=_get("ANTHROPIC_MODEL", "claude-opus-5-5"),
-            effort=_get("CLAUDE_EFFORT", "low"),
+            xai_api_key=_required("XAI_API_KEY"),
+            model=_get("GROK_MODEL", "grok-4.3"),
             imap_host=_get("IMAP_HOST", "imap.naver.com"),
             imap_port=int(_get("IMAP_PORT", "993")),
             imap_user=_required("IMAP_USER"),

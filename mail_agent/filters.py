@@ -1,4 +1,4 @@
-"""Claude 를 부르기 전에 돌리는 규칙 기반 필터 (빠르고 비용이 들지 않음)."""
+"""Grok 을 부르기 전에 돌리는 규칙 기반 필터 (빠르고 비용이 들지 않음)."""
 
 import re
 
@@ -15,9 +15,9 @@ def matches_sender(mail: Mail, keywords: tuple[str, ...]) -> str | None:
 
 
 def is_obvious_ad(mail: Mail) -> bool:
-    """제목에 (광고) 표시가 붙은 메일은 Claude 에 보내지 않고 바로 제외한다.
+    """제목에 (광고) 표시가 붙은 메일은 Grok 에 보내지 않고 바로 제외한다.
 
     List-Unsubscribe 같은 헤더는 원하는 뉴스레터에도 붙어 있어서 여기서 쓰지 않고,
-    애매한 경우는 Claude 의 판단(is_advertisement)에 맡긴다.
+    애매한 경우는 Grok 의 판단(is_advertisement)에 맡긴다.
     """
     return bool(_AD_SUBJECT.match(mail.subject))

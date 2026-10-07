@@ -1,14 +1,14 @@
 # simple-agent: 메일 요약 에이전트
 
 10분마다 **A 메일함**에서 새 메일을 확인하고, 원하는 송신자의 메일만 골라 광고를 걸러낸 뒤,
-**Claude**로 핵심을 요약해서 **B 메일 주소**로 보내 줍니다.
+**Grok (xAI)**으로 핵심을 요약해서 **B 메일 주소**로 보내 줍니다.
 
 ```
 ┌──────── 10분마다 (APScheduler) ────────┐
 │ 1. A 메일함 IMAP 접속, 지난 실행 이후 새 메일(UID)만 조회
 │ 2. 송신자 키워드 필터     ── 불일치 → 건너뜀
-│ 3. 제목 "(광고)" 표시 필터 ── 광고 → 건너뜀          (Claude 호출 없음, 비용 0)
-│ 4. Claude: 광고 판단 + 요약 (structured output)
+│ 3. 제목 "(광고)" 표시 필터 ── 광고 → 건너뜀          (Grok 호출 없음, 비용 0)
+│ 4. Grok: 광고 판단 + 요약 (structured output)
 │        └ is_advertisement=true → 건너뜀
 │ 5. 남은 메일들을 하나의 요약 메일로 B 주소에 발송 (SMTP)
 │ 6. (선택) 해당 메일을 정리 폴더/라벨로 복사
@@ -29,14 +29,14 @@ cp .env.example .env   # 값 채우기
 
 | 변수 | 설명 |
 |---|---|
-| `ANTHROPIC_API_KEY` | Claude API 키 |
+| `XAI_API_KEY` | xAI(Grok) API 키 – https://console.x.ai 에서 발급 |
 | `IMAP_*` | A 메일 계정 (새 메일 읽기) |
 | `SMTP_*`, `MAIL_FROM` | 요약 메일을 보낼 계정 (보통 A 계정 그대로) |
 | `DIGEST_TO` | B 메일 주소 (요약 받는 곳) |
 | `SENDER_KEYWORDS` | 송신자 이름/주소에 포함되면 대상. 쉼표 구분, 대소문자 무시 (예: `github.com,홍길동,@mycompany.co.kr`) |
 | `ORGANIZE_FOLDER` | (선택) 대상 메일을 복사해 둘 메일 폴더 (Gmail에서는 라벨로 보임) |
 | `CHECK_INTERVAL_MINUTES` | 확인 주기, 기본 10 |
-| `ANTHROPIC_MODEL`, `CLAUDE_EFFORT` | 기본 `claude-opus-5-5`, `low` |
+| `GROK_MODEL` | 기본 `grok-4.3` (xAI 콘솔의 모델 목록에 있는 이름으로 변경 가능) |
 
 ### A 계정(네이버) 준비
 
@@ -66,7 +66,7 @@ Gmail 은 `imap.gmail.com` / `smtp.gmail.com`, 2단계 인증 후 **앱 비밀�
 
 | 이름 | 예시 |
 |---|---|
-| `ANTHROPIC_API_KEY` | `sk-ant-...` |
+| `XAI_API_KEY` | `xai-...` |
 | `IMAP_USER` / `IMAP_PASSWORD` | 네이버 아이디(`myid`) / 비밀번호 또는 애플리케이션 비밀번호 |
 | `SMTP_USER` / `SMTP_PASSWORD` | 위와 동일 |
 | `DIGEST_TO` | B 메일 주소 |
@@ -80,7 +80,7 @@ Gmail 은 `imap.gmail.com` / `smtp.gmail.com`, 2단계 인증 후 **앱 비밀�
 | `IMAP_HOST` / `SMTP_HOST` | `imap.naver.com` / `smtp.naver.com` |
 | `IMAP_PORT` / `SMTP_PORT` | `993` / `465` |
 | `IMAP_MAILBOX` | `INBOX` |
-| `ANTHROPIC_MODEL` / `CLAUDE_EFFORT` | `claude-opus-5-5` / `low` |
+| `GROK_MODEL` | `grok-4.3` |
 | `INITIAL_LOOKBACK_DAYS` | `7` (첫 실행 때 며칠 전 메일부터 처리할지) |
 
 A 가 네이버면 Variables 는 하나도 등록하지 않아도 됩니다.
@@ -123,12 +123,11 @@ cron을 쓰고 싶다면 내장 스케줄러 대신:
 ## 동작 메모
 
 - 메일은 `BODY.PEEK`로 읽어서 **읽음 표시가 붙지 않습니다.** 원본 메일은 이동·삭제하지 않습니다.
-- 요약 메일 **발송까지 성공해야** 처리 위치를 저장합니다. SMTP/Claude 오류가 나면 다음 주기에 같은 메일을 다시 시도합니다.
+- 요약 메일 **발송까지 성공해야** 처리 위치를 저장합니다. SMTP/Grok API 오류가 나면 다음 주기에 같은 메일을 다시 시도합니다.
 - 한 번에 최대 50통까지 처리하고, 나머지는 다음 주기로 넘깁니다 (오래 꺼져 있다 켜졌을 때 비용 폭주 방지).
-- 30,000자를 넘는 본문은 앞부분만 Claude에 보내고, 잘렸다는 사실을 프롬프트에 함께 적습니다.
+- 30,000자를 넘는 본문은 앞부분만 Grok에 보내고, 잘렸다는 사실을 프롬프트에 함께 적습니다.
 - 메일 본문은 신뢰할 수 없는 입력이므로, 프롬프트에서 데이터로만 다루도록 지시하고 출력은 정해진 JSON 스키마로만 받습니다.
-- Claude 안전 분류기가 요청을 거절하는 드문 경우에 대비해 서버 측 `fallbacks: "default"`를 켜 두었습니다.
-  그래도 요약이 실패하면 메일은 "자동 요약 실패" 표시와 함께 요약 메일에 포함됩니다 (빠뜨리지 않음).
+- Grok 이 요청을 거절하거나 응답이 잘려 요약에 실패하면 메일은 "자동 요약 실패" 표시와 함께 요약 메일에 포함됩니다 (빠뜨리지 않음).
 
 ## 구조
 
@@ -139,8 +138,8 @@ mail_agent/
 ├── config.py       # .env 로딩
 ├── filters.py      # 송신자 키워드 / (광고) 제목 필터
 ├── mail_client.py  # IMAP 읽기, SMTP 발송
-└── summarizer.py   # Claude 호출 (광고 판단 + 요약)
-tests/test_agent.py # IMAP/SMTP/Claude 를 가짜로 바꾼 단위 테스트
+└── summarizer.py   # Grok 호출 (광고 판단 + 요약, openai 라이브러리 사용)
+tests/test_agent.py # IMAP/SMTP/Grok 을 가짜로 바꾼 단위 테스트
 ```
 
 테스트: `pip install pytest && python -m pytest -q`

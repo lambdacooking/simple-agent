@@ -1,4 +1,4 @@
-"""한 번의 실행: 새 메일 확인 → 필터링 → Claude 요약 → B 메일로 발송."""
+"""한 번의 실행: 새 메일 확인 → 필터링 → Grok 요약 → B 메일로 발송."""
 
 import json
 import logging
@@ -146,7 +146,7 @@ def run_once(cfg: Config, summarizer: Summarizer) -> int:
                 log.warning("UID %s 요약 결과 형식 오류 (%d개 필드)", uid, e.error_count())
                 analysis = None
             if analysis is not None and analysis.is_advertisement:
-                log.info("UID %s 광고 제외 (Claude 판단)", uid)
+                log.info("UID %s 광고 제외 (Grok 판단)", uid)
                 continue
             items.append(DigestItem(mail, keyword, analysis))
 

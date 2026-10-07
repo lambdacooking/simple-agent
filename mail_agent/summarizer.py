@@ -1,8 +1,8 @@
-"""Claude 로 광고 여부를 판단하고 핵심을 요약한다."""
+"""Grok(xAI) 으로 광고 여부를 판단하고 핵심을 요약한다."""
 
 import logging
 
-import anthropic
+from openai import ContentFilterFinishReasonError, LengthFinishReasonError, OpenAI
 from pydantic import BaseModel, Field
 
 from .config import Config
@@ -50,30 +50,36 @@ def _render(mail: Mail) -> str:
     )
 
 
+XAI_BASE_URL = "https://api.x.ai/v1"
+
+
 class Summarizer:
-    def __init__(self, cfg: Config, client: anthropic.Anthropic | None = None):
+    def __init__(self, cfg: Config, client: OpenAI | None = None):
         self.cfg = cfg
-        self.client = client or anthropic.Anthropic()
+        # xAI 는 OpenAI 와 같은 형식의 API 를 제공하므로 openai 라이브러리를 그대로 쓴다.
+        self.client = client or OpenAI(api_key=cfg.xai_api_key, base_url=XAI_BASE_URL)
 
     def analyze(self, mail: Mail) -> MailAnalysis | None:
         """분석 결과를 돌려준다. 거절/파싱 실패 시 None (호출 측에서 원문 정보만 사용)."""
-        response = self.client.beta.messages.parse(
-            model=self.cfg.model,
-            max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": _render(mail)}],
-            output_format=MailAnalysis,
-            output_config={"effort": self.cfg.effort},
-            # 안전 분류기가 요청을 거절하면 서버가 권장 모델로 자동 재시도한다.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
-        if response.stop_reason == "refusal":
-            log.warning("UID %s 요약이 거절되었습니다 (category=%s)", mail.uid,
-                        getattr(response.stop_details, "category", None))
+        try:
+            completion = self.client.chat.completions.parse(
+                model=self.cfg.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": _render(mail)},
+                ],
+                response_format=MailAnalysis,  # 응답을 이 스키마의 JSON 으로 강제
+            )
+        except (LengthFinishReasonError, ContentFilterFinishReasonError) as e:
+            # 응답이 길이 제한에 잘렸거나 콘텐츠 필터에 걸려 JSON 을 완성하지 못한 경우
+            log.warning("UID %s 요약 결과를 받지 못했습니다 (%s)", mail.uid, type(e).__name__)
             return None
-        if response.stop_reason == "max_tokens" or response.parsed_output is None:
-            log.warning("UID %s 요약 결과를 파싱하지 못했습니다 (stop_reason=%s)",
-                        mail.uid, response.stop_reason)
+
+        message = completion.choices[0].message
+        if message.refusal:
+            log.warning("UID %s 요약이 거절되었습니다", mail.uid)
             return None
-        return response.parsed_output
+        if message.parsed is None:
+            log.warning("UID %s 요약 결과를 파싱하지 못했습니다", mail.uid)
+            return None
+        return message.parsed

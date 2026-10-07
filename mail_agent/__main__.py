@@ -18,7 +18,7 @@ log = logging.getLogger("mail_agent")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="새 메일을 정리해 요약본을 보내는 Claude 에이전트")
+    parser = argparse.ArgumentParser(description="새 메일을 정리해 요약본을 보내는 Grok 에이전트")
     parser.add_argument("--once", action="store_true", help="한 번만 실행하고 종료")
     parser.add_argument("-v", "--verbose", action="store_true", help="디버그 로그 출력")
     args = parser.parse_args()

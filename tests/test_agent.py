@@ -28,7 +28,7 @@ def raw_mail(sender: str, subject: str, body: str = "본문", html: str | None =
 
 def make_cfg(tmp_path, **kw) -> Config:
     base = dict(
-        model="claude-opus-5-5", effort="low",
+        xai_api_key="xai-test", model="grok-4.3",
         imap_host="imap.test", imap_port=993, imap_user="a@test", imap_password="x",
         imap_mailbox="INBOX", organize_folder=None,
         smtp_host="smtp.test", smtp_port=465, smtp_user="a@test", smtp_password="x",
@@ -72,7 +72,7 @@ def test_encode_mailbox_modified_utf7():
     assert encode_mailbox("A&B") == '"A&-B"'
 
 
-# ── run_once (IMAP/SMTP/Claude 는 가짜로 대체) ────────────────────────
+# ── run_once (IMAP/SMTP/Grok 은 가짜로 대체) ────────────────────────
 
 
 class FakeMailbox:
@@ -151,7 +151,7 @@ def test_filters_summarizes_and_sends_digest(tmp_path, env):
         11: raw_mail("noreply@github.com", "PR #42 리뷰 요청"),
         12: raw_mail("shop@mall.com", "키워드 없는 송신자"),
         13: raw_mail('"홍길동" <h@corp.kr>', "(광고) 제목 표시 광고"),
-        14: raw_mail('"홍길동" <h@corp.kr>', "주간 뉴스레터"),  # Claude 가 광고로 판단
+        14: raw_mail('"홍길동" <h@corp.kr>', "주간 뉴스레터"),  # Grok 이 광고로 판단
         15: raw_mail('"홍길동" <h@corp.kr>', "회의록 공유"),
     }
 
@@ -198,19 +198,19 @@ def test_failed_summary_still_included(tmp_path, env):
 
 def test_config_treats_empty_env_as_default(monkeypatch):
     # GitHub Actions 에서 등록하지 않은 vars/secrets 는 빈 문자열로 들어온다
-    required = dict(IMAP_HOST="imap.test", IMAP_USER="a@test", IMAP_PASSWORD="x",
+    required = dict(XAI_API_KEY="xai-test", IMAP_HOST="imap.test", IMAP_USER="a@test", IMAP_PASSWORD="x",
                     SMTP_HOST="smtp.test", SMTP_USER="a@test", SMTP_PASSWORD="x",
                     DIGEST_TO="b@test", SENDER_KEYWORDS=" GitHub , 홍길동 ,")
     for k, v in required.items():
         monkeypatch.setenv(k, v)
-    for k in ("IMAP_PORT", "SMTP_PORT", "IMAP_MAILBOX", "ANTHROPIC_MODEL", "CLAUDE_EFFORT",
+    for k in ("IMAP_PORT", "SMTP_PORT", "IMAP_MAILBOX", "GROK_MODEL",
               "MAIL_FROM", "ORGANIZE_FOLDER"):
         monkeypatch.setenv(k, "")
     monkeypatch.setattr("mail_agent.config.load_dotenv", lambda: None)
 
     cfg = Config.from_env()
     assert (cfg.imap_port, cfg.smtp_port, cfg.imap_mailbox) == (993, 465, "INBOX")
-    assert (cfg.model, cfg.effort, cfg.mail_from) == ("claude-opus-5-5", "low", "a@test")
+    assert (cfg.model, cfg.mail_from) == ("grok-4.3", "a@test")
     assert cfg.organize_folder is None
     assert cfg.sender_keywords == ("github", "홍길동")
 
@@ -219,7 +219,8 @@ def test_config_defaults_to_naver_and_completes_sender(monkeypatch):
     for k in ("IMAP_HOST", "SMTP_HOST", "MAIL_FROM"):
         monkeypatch.delenv(k, raising=False)
     for k, v in dict(IMAP_USER="myid", IMAP_PASSWORD="x", SMTP_USER="myid", SMTP_PASSWORD="x",
-                     DIGEST_TO="b@test", SENDER_KEYWORDS="github").items():
+                     DIGEST_TO="b@test", SENDER_KEYWORDS="github",
+                     XAI_API_KEY="xai-test").items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr("mail_agent.config.load_dotenv", lambda: None)
 
@@ -257,3 +258,64 @@ def test_first_run_without_recent_mail_uses_latest_uid(tmp_path, env):
     assert agent.run_once(cfg, FakeSummarizer()) == 0
     assert env == []
     assert agent.load_state(cfg.state_file)["last_uid"] == 1
+
+
+# ── Grok 호출 (HTTP 를 가짜 응답으로 대체) ───────────────────────────
+
+
+def _grok_client(handler):
+    import httpx2 as httpx
+    from openai import OpenAI
+    return OpenAI(api_key="xai-test", base_url="https://api.x.ai/v1",
+                  http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def _completion(content=None, refusal=None, finish_reason="stop"):
+    return {"id": "c1", "object": "chat.completion", "created": 0, "model": "grok-4.3",
+            "choices": [{"index": 0, "finish_reason": finish_reason,
+                         "message": {"role": "assistant", "content": content, "refusal": refusal}}]}
+
+
+def test_summarizer_sends_schema_and_parses_result(tmp_path):
+    import json
+    import httpx2 as httpx
+    from mail_agent.summarizer import Summarizer
+
+    seen = {}
+
+    def handler(req):
+        seen["url"] = str(req.url)
+        seen["body"] = json.loads(req.content)
+        out = {"is_advertisement": False, "summary": "회의 일정 변경",
+               "key_points": ["10/8 14시"], "action_items": ["참석 회신"]}
+        return httpx.Response(200, json=_completion(json.dumps(out, ensure_ascii=False)))
+
+    s = Summarizer(make_cfg(tmp_path), _grok_client(handler))
+    result = s.analyze(parse_mail(1, raw_mail("noreply@github.com", "회의", "내일 회의 <b>")))
+
+    assert result == MailAnalysis(is_advertisement=False, summary="회의 일정 변경",
+                                  key_points=["10/8 14시"], action_items=["참석 회신"])
+    assert seen["url"] == "https://api.x.ai/v1/chat/completions"
+    body = seen["body"]
+    assert body["model"] == "grok-4.3"
+    assert [m["role"] for m in body["messages"]] == ["system", "user"]
+    assert "<email>" in body["messages"][1]["content"]
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["schema"]["properties"].keys() >= {
+        "is_advertisement", "summary", "key_points", "action_items"}
+
+
+@pytest.mark.parametrize("payload", [
+    _completion(refusal="cannot help"),
+    _completion('{"summary": "잘림', finish_reason="length"),
+])
+def test_summarizer_returns_none_on_refusal_or_truncation(tmp_path, payload):
+    import httpx2 as httpx
+    from openai import LengthFinishReasonError
+    from mail_agent.summarizer import Summarizer
+
+    s = Summarizer(make_cfg(tmp_path), _grok_client(lambda req: httpx.Response(200, json=payload)))
+    try:
+        assert s.analyze(parse_mail(1, raw_mail("noreply@github.com", "t"))) is None
+    except LengthFinishReasonError:
+        pytest.fail("finish_reason=length 가 예외로 새어 나옴")
