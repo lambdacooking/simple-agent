@@ -58,6 +58,7 @@ jobs:
           SMTP_PORT: ${{ vars.SMTP_PORT }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
           CLAUDE_EFFORT: ${{ vars.CLAUDE_EFFORT }}
+          INITIAL_LOOKBACK_DAYS: ${{ vars.INITIAL_LOOKBACK_DAYS }}
 
       - name: Save state
         if: always() && hashFiles('state.json') != ''

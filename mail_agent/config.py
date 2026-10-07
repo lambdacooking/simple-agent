@@ -57,6 +57,8 @@ class Config:
     sender_keywords: tuple[str, ...]
     interval_minutes: int
     state_file: str
+    # 첫 실행 때 며칠 전 메일부터 처리할지 (0 이면 첫 실행 이후 도착한 메일부터)
+    initial_lookback_days: int = 7
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -87,4 +89,5 @@ class Config:
             sender_keywords=keywords,
             interval_minutes=int(_get("CHECK_INTERVAL_MINUTES", "10")),
             state_file=_get("STATE_FILE", "state.json"),
+            initial_lookback_days=int(_get("INITIAL_LOOKBACK_DAYS", "7")),
         )

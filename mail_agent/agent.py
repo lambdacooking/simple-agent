@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from html import escape
 
 from pydantic import ValidationError
@@ -92,6 +92,16 @@ def build_digest(items: list[DigestItem]) -> tuple[str, str, str]:
 # ── 실행 ─────────────────────────────────────────────────────────────
 
 
+def initial_baseline(mb: Mailbox, lookback_days: int) -> int:
+    """첫 실행 기준점 UID. 이 UID 보다 큰 메일이 처리 대상이 된다."""
+    if lookback_days > 0:
+        since = date.today() - timedelta(days=lookback_days)
+        recent = mb.uids_since(since)
+        if recent:
+            return recent[0] - 1
+    return mb.max_uid()
+
+
 def run_once(cfg: Config, summarizer: Summarizer) -> int:
     """새 메일을 처리하고, B 메일로 보낸 요약 건수를 돌려준다."""
     with Mailbox(cfg) as mb:
@@ -99,12 +109,16 @@ def run_once(cfg: Config, summarizer: Summarizer) -> int:
         state = load_state(cfg.state_file)
 
         if state is None or state.get("uidvalidity") != uidvalidity:
-            # 첫 실행(또는 메일함이 재생성됨): 기존 메일 전체를 요약하지 않도록
-            # 현재 위치를 기준점으로 저장하고, 이후 들어오는 메일부터 처리한다.
-            last = mb.max_uid()
-            save_state(cfg.state_file, uidvalidity, last)
-            log.info("기준점 저장 (UID %s). 다음 실행부터 새 메일을 처리합니다.", last)
-            return 0
+            # 첫 실행(또는 메일함이 재생성됨): 메일함 전체를 요약하지 않도록 기준점을 잡는다.
+            # INITIAL_LOOKBACK_DAYS 일 전부터 도착한 메일은 처리 대상에 포함한다.
+            baseline = initial_baseline(mb, cfg.initial_lookback_days)
+            save_state(cfg.state_file, uidvalidity, baseline)
+            state = {"uidvalidity": uidvalidity, "last_uid": baseline}
+            if cfg.initial_lookback_days <= 0:
+                log.info("기준점 저장 (UID %s). 다음 실행부터 새 메일을 처리합니다.", baseline)
+                return 0
+            log.info("기준점 저장 (UID %s). 최근 %d일 메일부터 처리합니다.",
+                     baseline, cfg.initial_lookback_days)
 
         new_uids = mb.uids_after(state["last_uid"])[:MAX_MAILS_PER_RUN]
         if not new_uids:

@@ -1,4 +1,7 @@
+from datetime import date, timedelta
+from email import message_from_bytes as EmailMessage_from
 from email.message import EmailMessage
+from email.utils import format_datetime, parsedate_to_datetime
 
 import pytest
 
@@ -9,12 +12,13 @@ from mail_agent.mail_client import encode_mailbox, parse_mail
 from mail_agent.summarizer import MailAnalysis
 
 
-def raw_mail(sender: str, subject: str, body: str = "본문", html: str | None = None) -> bytes:
+def raw_mail(sender: str, subject: str, body: str = "본문", html: str | None = None,
+             date: str = "Tue, 06 Oct 2026 09:30:00 +0900") -> bytes:
     msg = EmailMessage()
     msg["From"] = sender
     msg["To"] = "me@example.com"
     msg["Subject"] = subject
-    msg["Date"] = "Tue, 06 Oct 2026 09:30:00 +0900"
+    msg["Date"] = date
     if html is None:
         msg.set_content(body)
     else:
@@ -91,6 +95,10 @@ class FakeMailbox:
     def max_uid(self):
         return max(self.mails, default=0)
 
+    def uids_since(self, day):
+        return sorted(u for u, raw in self.mails.items()
+                      if parsedate_to_datetime(EmailMessage_from(raw)["Date"]).date() >= day)
+
     def uids_after(self, last):
         return sorted(u for u in self.mails if u > last)
 
@@ -122,9 +130,14 @@ def env(monkeypatch):
     return sent
 
 
-def test_first_run_sets_baseline_without_sending(tmp_path, env):
+def days_ago(n: int) -> str:
+    from datetime import datetime, timezone
+    return format_datetime(datetime.now(timezone.utc) - timedelta(days=n))
+
+
+def test_first_run_with_lookback_0_sets_baseline_without_sending(tmp_path, env):
     FakeMailbox.mails = {1: raw_mail("noreply@github.com", "옛날 메일")}
-    cfg = make_cfg(tmp_path)
+    cfg = make_cfg(tmp_path, initial_lookback_days=0)
     assert agent.run_once(cfg, FakeSummarizer()) == 0
     assert env == []
     assert agent.load_state(cfg.state_file) == {"uidvalidity": 1, "last_uid": 1}
@@ -219,3 +232,28 @@ def test_config_defaults_to_naver_and_completes_sender(monkeypatch):
     assert Config.from_env().mail_from == "me@naver.com"
     monkeypatch.setenv("MAIL_FROM", "alias@naver.com")
     assert Config.from_env().mail_from == "alias@naver.com"
+
+
+def test_first_run_processes_last_7_days(tmp_path, env):
+    FakeMailbox.mails = {
+        1: raw_mail("noreply@github.com", "10일 전 메일", date=days_ago(10)),
+        2: raw_mail("noreply@github.com", "8일 전 메일", date=days_ago(8)),
+        3: raw_mail("noreply@github.com", "6일 전 메일", date=days_ago(6)),
+        4: raw_mail("shop@mall.com", "키워드 없음", date=days_ago(3)),
+        5: raw_mail("noreply@github.com", "오늘 메일", date=days_ago(0)),
+    }
+    cfg = make_cfg(tmp_path)  # 기본값 7일
+
+    assert agent.run_once(cfg, FakeSummarizer()) == 2
+    text = env[0][1]
+    assert "6일 전 메일" in text and "오늘 메일" in text
+    assert "8일 전" not in text and "10일 전" not in text
+    assert agent.load_state(cfg.state_file)["last_uid"] == 5
+
+
+def test_first_run_without_recent_mail_uses_latest_uid(tmp_path, env):
+    FakeMailbox.mails = {1: raw_mail("noreply@github.com", "옛날", date=days_ago(30))}
+    cfg = make_cfg(tmp_path)
+    assert agent.run_once(cfg, FakeSummarizer()) == 0
+    assert env == []
+    assert agent.load_state(cfg.state_file)["last_uid"] == 1

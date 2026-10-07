@@ -8,6 +8,7 @@ import logging
 import re
 import smtplib
 from dataclasses import dataclass
+from datetime import date
 from email.message import EmailMessage
 from email.utils import getaddresses, parsedate_to_datetime
 from html import unescape
@@ -149,6 +150,15 @@ class Mailbox:
         typ, data = self.imap.uid("SEARCH", None, "ALL")
         uids = [int(u) for u in (data[0] or b"").split()] if typ == "OK" else []
         return max(uids, default=0)
+
+    def uids_since(self, day: date) -> list[int]:
+        """day 이후(그날 포함) 서버에 도착한 메일의 UID. IMAP SINCE 는 날짜 단위로만 비교한다."""
+        # IMAP 날짜 형식은 영어 월 이름(06-Oct-2026)이라 로케일에 의존하지 않게 직접 만든다
+        month = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()[day.month - 1]
+        typ, data = self.imap.uid("SEARCH", None, f"SINCE {day.day:02d}-{month}-{day.year}")
+        if typ != "OK":
+            raise RuntimeError("UID SEARCH SINCE 실패")
+        return sorted(int(u) for u in (data[0] or b"").split())
 
     def fetch(self, uid: int) -> Mail | None:
         typ, data = self.imap.uid("FETCH", str(uid), "(BODY.PEEK[])")
